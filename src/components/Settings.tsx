@@ -203,18 +203,19 @@ export default function Settings() {
           throw new Error('Dữ liệu mô hình không đúng định dạng');
         }
         
-        if (!models.includes('gemini-3.1-pro-preview')) {
-          models = ['gemini-3.1-pro-preview', ...models];
-        }
-        
         // Sắp xếp tự động danh sách models theo đúng yêu cầu
         const sortedModels = sortModels(models);
         
-        updateProxy(proxy.id, { models: sortedModels, selectedModel: proxy.selectedModel || 'gemini-3.1-pro-preview' });
+        let newSelectedModel = proxy.selectedModel;
+        if (!newSelectedModel || !sortedModels.includes(newSelectedModel)) {
+          newSelectedModel = sortedModels[0];
+        }
+        
+        updateProxy(proxy.id, { models: sortedModels, selectedModel: newSelectedModel });
         successCount++;
       } catch (error) {
         console.error(`Lỗi khi tải models cho proxy ${proxy.name || proxy.id}:`, error);
-        const currentModels = proxy.models?.length ? proxy.models : ['gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+        const currentModels = proxy.models?.length ? proxy.models : ['gemini-3.1-pro-preview'];
         updateProxy(proxy.id, { models: sortModels(currentModels), selectedModel: proxy.selectedModel || 'gemini-3.1-pro-preview' });
       }
     }));
