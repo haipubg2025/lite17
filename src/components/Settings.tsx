@@ -161,16 +161,56 @@ export default function Settings() {
           baseUrl += '/v1';
         }
         
-        const res = await fetch('/api/proxy-models', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ baseUrl, key: proxy.key })
-        });
-        
-        if (!res.ok) throw new Error('Cannot fetch models');
-        const data = await res.json();
+        let data;
+        let fetchSuccess = false;
+
+        try {
+          const res = await fetch('/api/proxy-models', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ baseUrl, key: proxy.key })
+          });
+          
+          if (res.ok) {
+            data = await res.json();
+            fetchSuccess = true;
+          }
+        } catch (apiErr) {
+          console.warn('Backend /api/proxy-models is not available, falling back to direct fetch', apiErr);
+        }
+
+        if (!fetchSuccess) {
+          // Fallback mechanism: direct fetch from client
+          let directUrl = `${baseUrl}/models`;
+          const directHeaders: Record<string, string> = {};
+          if (proxy.key) {
+             directHeaders['Authorization'] = `Bearer ${proxy.key}`;
+          }
+          if (baseUrl.includes("generativelanguage.googleapis.com")) {
+            directUrl = `${baseUrl}/models?key=${proxy.key}`;
+          }
+          
+          const directRes = await fetch(directUrl, { headers: directHeaders });
+          if (!directRes.ok) {
+             // Second fallback: query parameter
+             if (proxy.key && !directUrl.includes('?key=')) {
+               const altRes = await fetch(`${baseUrl}/models?key=${proxy.key}`);
+               if (altRes.ok) {
+                 data = await altRes.json();
+                 fetchSuccess = true;
+               } else {
+                 console.warn(`[Proxy Load Models] Cannot fetch directly via query param for ${proxy.name || proxy.id} (${altRes.status})`);
+               }
+             } else {
+               console.warn(`[Proxy Load Models] Cannot fetch directly for ${proxy.name || proxy.id} (${directRes.status})`);
+             }
+          } else {
+             data = await directRes.json();
+             fetchSuccess = true;
+          }
+        }
         
         let modelsListToSet: string[] = [];
         if (data) {
@@ -200,7 +240,10 @@ export default function Settings() {
           .filter(Boolean);
 
         if (models.length === 0) {
-          throw new Error('Dữ liệu mô hình không đúng định dạng');
+          console.warn(`[Proxy Load Models] Dữ liệu lịch sử rỗng hoặc lỗi cho ${proxy.name || proxy.id}, fallback to default.`);
+          const currentModels = proxy.models?.length ? proxy.models : ['gemini-3.1-pro-preview'];
+          updateProxy(proxy.id, { models: sortModels(currentModels), selectedModel: proxy.selectedModel || 'gemini-3.1-pro-preview' });
+          return;
         }
         
         // Sắp xếp tự động danh sách models theo đúng yêu cầu
@@ -214,7 +257,7 @@ export default function Settings() {
         updateProxy(proxy.id, { models: sortedModels, selectedModel: newSelectedModel });
         successCount++;
       } catch (error) {
-        console.error(`Lỗi khi tải models cho proxy ${proxy.name || proxy.id}:`, error);
+        console.warn(`[Proxy Load Models] Ngoại lệ khi tải models cho proxy ${proxy.name || proxy.id}:`, error);
         const currentModels = proxy.models?.length ? proxy.models : ['gemini-3.1-pro-preview'];
         updateProxy(proxy.id, { models: sortModels(currentModels), selectedModel: proxy.selectedModel || 'gemini-3.1-pro-preview' });
       }
